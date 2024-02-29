@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, request
 from todo.models import db
 from todo.models.todo import Todo
-from datetime import datetime
+from datetime import datetime, timedelta
 
  
 api = Blueprint('api', __name__, url_prefix='/api/v1') 
@@ -28,12 +28,23 @@ def get_todos():
     result = []
     completed = request.args.get('completed', default=None, type=bool)
     deadline = request.args.get('window', default=None, type=str)
+    if deadline:
+        window_end = (datetime.now() + timedelta(days=int(deadline))).strftime("%Y-%m-%dT00:00:00")
     for todo in todos:
         if completed is None and deadline is None:
             result.append(todo.to_dict())  
         elif deadline is None and todo.completed == completed:
             result.append(todo.to_dict())
-        # elif completed is None and todo.deadline <= 
+
+        elif completed is None and \
+                todo.deadline_at and \
+                datetime.fromisoformat(str(todo.deadline_at)) <= datetime.fromisoformat(window_end):
+            result.append(todo.to_dict())
+        elif todo.deadline_at and \
+                todo.completed == completed and \
+                datetime.fromisoformat(str(todo.deadline_at)) <= datetime.fromisoformat(window_end):
+            result.append(todo.to_dict())
+
     return jsonify(result)
     
 @api.route('/todos/<int:todo_id>', methods=['GET'])
@@ -79,10 +90,13 @@ def update_todo(todo_id):
     if todo.id != request.json.get("id", todo.id):
         return jsonify({"error": "Todo id does not match"}), 400
     
+    
     todo.title = request.json.get("title", todo.title)
     todo.description = request.json.get("description", todo.description)
     todo.completed = request.json.get("completed", todo.completed)
-    todo.deadline_at = request.json.get("deadline_at", todo.deadline_at)
+    if "deadline_at" in request.json:
+        timeString : str = request.json.get("deadline_at")
+        todo.deadline_at = datetime.fromisoformat(timeString)
     
     db.session.commit()
 
